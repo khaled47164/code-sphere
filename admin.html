@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة تحكم الإدارة - Code Sphere</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen font-sans">
+
+  <!-- الهيدر -->
+  <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-md">
+    <div class="flex items-center gap-3">
+      <span class="text-xl font-bold text-indigo-400">Code Sphere | عالم البرمجة</span>
+      <span class="text-xs bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded-full font-bold">لوحة الأدمن</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="index.html" class="text-sm text-slate-300 hover:text-white transition">عرض المنصة كطالب</a>
+      <button onclick="logout()" class="text-sm bg-rose-600 hover:bg-rose-700 px-4 py-1.5 rounded-lg font-bold transition">تسجيل خروج</button>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-6 space-y-10">
+
+    <!-- القسم الأول: طلبات الاشتراك المعلقة -->
+    <section class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-amber-400 flex items-center gap-2">
+          <span>طلبات الاشتراك المعلقة (بانتظار المراجعة)</span>
+          <span id="pending-count" class="text-xs bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full">0</span>
+        </h2>
+        <button onclick="loadPendingEnrollments()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition">تحديث الطلبات ↻</button>
+      </div>
+
+      <div id="pending-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <p class="text-slate-400 text-sm">جاري تحميل الطلبات...</p>
+      </div>
+    </section>
+
+    <!-- القسم الثاني: إضافة كورس جديد وإضافة دروس -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      
+      <!-- فورم إضافة كورس -->
+      <section class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
+        <h2 class="text-xl font-bold text-indigo-400 mb-4">إضافة كورس جديد</h2>
+        <form onsubmit="addCourse(event)" class="space-y-4">
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">اسم الكورس</label>
+            <input type="text" id="course-title" required placeholder="مثال: أساسيات البرمجة بلغة C++"
+              class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">وصف مختصر للكورس</label>
+            <textarea id="course-desc" rows="2" required placeholder="ماذا سيتعلم الطالب في هذا الكورس؟"
+              class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">السعر (ج.م)</label>
+              <input type="number" id="course-price" required min="0" placeholder="150"
+                class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">رابط صورة الغلاف</label>
+              <input type="url" id="course-image" placeholder="https://..."
+                class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500" dir="ltr" />
+            </div>
+          </div>
+          <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold transition shadow-lg">
+            نشر الكورس
+          </button>
+        </form>
+      </section>
+
+      <!-- فورم إضافة درس لكورس موجود -->
+      <section class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
+        <h2 class="text-xl font-bold text-emerald-400 mb-4">إضافة فيديو / درس لكورس</h2>
+        <form onsubmit="addLesson(event)" class="space-y-4">
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">اختر الكورس</label>
+            <select id="lesson-course-select" required
+              class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-emerald-500">
+              <option value="">جاري تحميل الكورسات...</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">عنوان الدرس</label>
+            <input type="text" id="lesson-title" required placeholder="مثال: المحاضرة الأولى - مقدمة"
+              class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">رابط الفيديو (YouTube Embed أو رابط عادي)</label>
+            <input type="url" id="lesson-url" required placeholder="https://www.youtube.com/embed/..."
+              class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-emerald-500" dir="ltr" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">ترتيب الدرس</label>
+            <input type="number" id="lesson-order" required min="1" value="1"
+              class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-emerald-500" />
+          </div>
+          <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold transition shadow-lg">
+            إضافة الدرس
+          </button>
+        </form>
+      </section>
+
+    </div>
+
+    <!-- القسم الثالث: الكورسات الحالية -->
+    <section class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
+      <h2 class="text-xl font-bold text-slate-200 mb-4">الكورسات المنشورة حالياً</h2>
+      <div id="courses-list" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <p class="text-slate-400 text-sm">جاري التحميل...</p>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="supabase-config.js"></script>
+  <script>
+    // 1. التحقق من صلاحية الأدمن
+    async function checkAdmin() {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (!user) return window.location.href = 'auth.html';
+
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile || profile.role !== 'admin') {
+        alert('عذراً، هذه الصفحة مخصصة للإدارة فقط.');
+        window.location.href = 'index.html';
+        return;
+      }
+
+      loadPendingEnrollments();
+      loadCourses();
+    }
+
+    // 2. جلب طلبات الاشتراك المعلقة مع بيانات الطالب ورقم التحويل
+    async function loadPendingEnrollments() {
+      const container = document.getElementById('pending-list');
+      const countBadge = document.getElementById('pending-count');
+
+      const { data: enrollments, error } = await supabaseClient
+        .from('enrollments')
+        .select(`
+          id,
+          receipt_url,
+          sender_phone,
+          created_at,
+          profiles ( full_name, phone ),
+          courses ( title, price )
+        `)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error(error);
+        container.innerHTML = `<p class="text-rose-400 text-sm">خطأ في جلب الطلبات: ${error.message}</p>`;
+        return;
+      }
+
+      countBadge.textContent = enrollments.length;
+
+      if (enrollments.length === 0) {
+        container.innerHTML = `<p class="text-slate-400 text-sm col-span-2">لا توجد طلبات اشتراك معلقة حالياً.</p>`;
+        return;
+      }
+
+      container.innerHTML = enrollments.map(req => `
+        <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col justify-between gap-4">
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white text-base">${req.profiles?.full_name || 'طالب غير معروف'}</span>
+              <span class="text-xs text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-lg">${req.courses?.price || 0} ج.م</span>
+            </div>
+            <p class="text-sm text-indigo-300 font-semibold">الكورس: ${req.courses?.title || 'كورس محذوف'}</p>
+            <p class="text-xs text-slate-400">واتساب الطالب: <span dir="ltr" class="font-mono text-slate-200">${req.profiles?.phone || 'غير مسجل'}</span></p>
+            <p class="text-sm text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg inline-block mt-1">
+              رقم التحويل: <span dir="ltr" class="font-mono tracking-wider">${req.sender_phone || 'غير مسجل'}</span>
+            </p>
+          </div>
+
+          <div class="flex items-center gap-2 pt-2 border-t border-slate-800">
+            <a href="${req.receipt_url}" target="_blank" 
+              class="flex-1 text-center py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-bold transition">
+              عرض الإيصال 🖼️
+            </a>
+            <button onclick="updateEnrollment('${req.id}', 'approved')" 
+              class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold transition">
+              موافقة وتفعيل ✓
+            </button>
+            <button onclick="updateEnrollment('${req.id}', 'rejected')" 
+              class="px-3 py-2 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-600/30 rounded-lg text-xs font-bold transition">
+              رفض ✕
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // 3. تفعيل أو رفض الاشتراك
+    async function updateEnrollment(enrollmentId, newStatus) {
+      const confirmMsg = newStatus === 'approved' ? 'هل تأكدت من وصول المبلغ وتريد تفعيل الكورس للطالب؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
+      if (!confirm(confirmMsg)) return;
+
+      const { error } = await supabaseClient
+        .from('enrollments')
+        .update({ status: newStatus })
+        .eq('id', enrollmentId);
+
+      if (error) {
+        alert('حدث خطأ: ' + error.message);
+      } else {
+        loadPendingEnrollments();
+      }
+    }
+
+    // 4. تحويل رابط يوتيوب العادي إلى Embed تلقائياً لتجنب خطأ الاتصال
+    function formatYouTubeUrl(url) {
+      if (url.includes('youtube.com/embed/')) return url;
+      let videoId = '';
+      if (url.includes('youtu.be/')) {
+        videoId = url.split('youtu.be/')[1].split('?')[0];
+      } else if (url.includes('youtube.com/watch?v=')) {
+        videoId = url.split('v=')[1].split('&')[0];
+      }
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+    }
+
+    // 5. إضافة كورس جديد
+    async function addCourse(e) {
+      e.preventDefault();
+      const title = document.getElementById('course-title').value.trim();
+      const description = document.getElementById('course-desc').value.trim();
+      const price = parseFloat(document.getElementById('course-price').value);
+      const image_url = document.getElementById('course-image').value.trim() || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=800&q=80';
+
+      const { error } = await supabaseClient.from('courses').insert({
+        title, description, price, image_url
+      });
+
+      if (error) {
+        alert('خطأ في إضافة الكورس: ' + error.message);
+      } else {
+        alert('تم نشر الكورس بنجاح!');
+        e.target.reset();
+        loadCourses();
+      }
+    }
+
+    // 6. إضافة درس جديد
+    async function addLesson(e) {
+      e.preventDefault();
+      const course_id = document.getElementById('lesson-course-select').value;
+      const title = document.getElementById('lesson-title').value.trim();
+      const rawUrl = document.getElementById('lesson-url').value.trim();
+      const order_index = parseInt(document.getElementById('lesson-order').value);
+      const video_url = formatYouTubeUrl(rawUrl);
+
+      const { error } = await supabaseClient.from('lessons').insert({
+        course_id, title, video_url, order_index
+      });
+
+      if (error) {
+        alert('خطأ في إضافة الدرس: ' + error.message);
+      } else {
+        alert('تم إضافة الدرس بنجاح!');
+        document.getElementById('lesson-title').value = '';
+        document.getElementById('lesson-url').value = '';
+        document.getElementById('lesson-order').value = order_index + 1;
+      }
+    }
+
+    // 7. جلب الكورسات للقائمة المنسدلة والعرض
+    async function loadCourses() {
+      const { data: courses } = await supabaseClient.from('courses').select('*').order('created_at', { ascending: false });
+      const select = document.getElementById('lesson-course-select');
+      const list = document.getElementById('courses-list');
+
+      if (!courses || courses.length === 0) {
+        select.innerHTML = `<option value="">لا توجد كورسات بعد</option>`;
+        list.innerHTML = `<p class="text-slate-400 text-sm col-span-3">لم تقم بنشر أي كورسات بعد.</p>`;
+        return;
+      }
+
+      select.innerHTML = courses.map(c => `<option value="${c.id}">${c.title}</option>`).join('');
+
+      list.innerHTML = courses.map(c => `
+        <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 class="font-bold text-white text-sm">${c.title}</h3>
+            <span class="text-xs text-emerald-400 font-bold">${c.price} ج.م</span>
+          </div>
+          <button onclick="deleteCourse('${c.id}')" class="text-xs bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white px-3 py-1.5 rounded-lg transition">
+            حذف
+          </button>
+        </div>
+      `).join('');
+    }
+
+    async function deleteCourse(id) {
+      if (!confirm('هل أنت متأكد من حذف هذا الكورس؟')) return;
+      const { error } = await supabaseClient.from('courses').delete().eq('id', id);
+      if (error) alert('خطأ في الحذف: ' + error.message);
+      else loadCourses();
+    }
+
+    async function logout() {
+      await supabaseClient.auth.signOut();
+      window.location.href = 'auth.html';
+    }
+
+    checkAdmin();
+  </script>
+</body>
+</html>

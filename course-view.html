@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>مشاهدة الكورس - Code Sphere</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen font-sans">
+
+  <!-- الهيدر -->
+  <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-md">
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="text-sm text-indigo-400 hover:underline font-bold">← العودة للكورسات</a>
+      <span class="text-slate-600">|</span>
+      <span class="text-base font-bold text-white" id="header-course-title">Code Sphere | عالم البرمجة</span>
+    </div>
+    <span id="course-badge" class="hidden text-xs font-bold px-3 py-1 rounded-full"></span>
+  </header>
+
+  <!-- حالة التحميل أو الحظر (لو الكورس مدفوع والطالب مش مشترك) -->
+  <div id="status-screen" class="max-w-lg mx-auto mt-16 p-8 bg-slate-800 border border-slate-700 rounded-2xl text-center space-y-4 shadow-2xl">
+    <p id="status-title" class="text-xl font-bold text-indigo-400">جاري التحقق من صلاحية الوصول...</p>
+    <p id="status-desc" class="text-sm text-slate-300 leading-relaxed"></p>
+    <div id="status-actions" class="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3"></div>
+  </div>
+
+  <!-- مشغل الكورس والدروس (يظهر عند السماح بالمشاهدة) -->
+  <main id="player-screen" class="hidden max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    
+    <!-- مشغل الفيديو الرئيسي -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="bg-black rounded-2xl overflow-hidden border border-slate-700 shadow-2xl aspect-video">
+        <iframe id="video-frame" class="w-full h-full" src="" title="مشغل الدرس"
+          frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen>
+        </iframe>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5">
+        <h1 id="active-lesson-title" class="text-xl font-bold text-white">اختر درساً للبدء</h1>
+        <p id="course-description" class="text-sm text-slate-400 mt-2 leading-relaxed"></p>
+      </div>
+    </div>
+
+    <!-- قائمة دروس الكورس -->
+    <aside class="bg-slate-800 border border-slate-700 rounded-2xl p-5 h-fit shadow-xl">
+      <h2 class="text-lg font-bold text-indigo-400 mb-4 border-b border-slate-700 pb-3">محتوى الكورس</h2>
+      <div id="lessons-list" class="space-y-2.5">
+        <p class="text-slate-400 text-sm">جاري تحميل الدروس...</p>
+      </div>
+    </aside>
+
+  </main>
+
+  <script src="supabase-config.js"></script>
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseId = urlParams.get('id');
+    let allLessons = [];
+
+    async function initCourseView() {
+      if (!courseId) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      // 1. جلب بيانات الكورس أولاً
+      const { data: course, error: courseError } = await supabaseClient
+        .from('courses')
+        .select('*')
+        .eq('id', courseId)
+        .single();
+
+      if (courseError || !course) {
+        showStatus('الكورس غير موجود', 'عذراً، لم نتمكن من العثور على هذا الكورس.', `
+          <a href="index.html" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-sm transition">العودة للرئيسية</a>
+        `);
+        return;
+      }
+
+      document.getElementById('header-course-title').textContent = course.title;
+      document.getElementById('course-description').textContent = course.description || '';
+
+      const isFree = Number(course.price) === 0;
+      const badge = document.getElementById('course-badge');
+      badge.classList.remove('hidden');
+
+      // 2. لو الكورس مجاني (0 ج.م) -> افتح الدروس فوراً للجميع بدون إيصال!
+      if (isFree) {
+        badge.textContent = 'كورس مجاني 100%';
+        badge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+        await loadLessons(courseId);
+        return;
+      }
+
+      // 3. لو الكورس مدفوع -> تحقق من تسجيل الدخول وصلاحية الطالب أو الأدمن
+      badge.textContent = 'كورس مدفوع';
+      badge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
+
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (!user) {
+        showStatus(
+          'يجب تسجيل الدخول أولاً',
+          'هذا الكورس مدفوع. سجل دخولك بحسابك لمتابعة المشاهدة أو الاشتراك.',
+          `<a href="auth.html" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-sm transition">تسجيل الدخول / حساب جديد</a>`
+        );
+        return;
+      }
+
+      // السماح للأدمن بمشاهدة أي كورس بدون اشتراك
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile && profile.role === 'admin') {
+        await loadLessons(courseId);
+        return;
+      }
+
+      // فحص حالة اشتراك الطالب في جدول enrollments
+      const { data: enrollment } = await supabaseClient
+        .from('enrollments')
+        .select('status')
+        .eq('user_id', user.id)
+        .eq('course_id', courseId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!enrollment) {
+        showStatus(
+          'أنت غير مشترك في هذا الكورس',
+          `قيمة الاشتراك في هذا الكورس ${course.price} ج.م. اشترك الآن وارفع إيصال التحويل لفتح جميع المحاضرات.`,
+          `<a href="checkout.html?id=${course.id}" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold text-sm transition">اشترك الآن (${course.price} ج.م)</a>`
+        );
+        return;
+      }
+
+      if (enrollment.status === 'pending') {
+        showStatus(
+          'طلبك قيد المراجعة حالياً ⏳',
+          'تم استلام صورة الإيصال ورقم التحويل بنجاح. جاري مراجعته من إدارة Code Sphere وسيتم تفعيل الكورس في أقرب وقت.',
+          `
+            <a href="https://wa.me/201226099159?text=السلام%20عليكم،%20رفعت%20إيصال%20الاشتراك%20في%20كورس%20${encodeURIComponent(course.title)}%20على%20منصة%20Code%20Sphere" 
+               target="_blank" 
+               class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold text-sm transition">
+              تواصل عبر واتساب لتسريع التفعيل
+            </a>
+            <a href="index.html" class="px-5 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold text-sm transition">العودة للرئيسية</a>
+          `
+        );
+        return;
+      }
+
+      if (enrollment.status === 'rejected') {
+        showStatus(
+          'تم رفض طلب الاشتراك ❌',
+          'عذراً، لم يتم تأكيد عملية التحويل. يرجى التأكد من بيانات الإيصال وإعادة المحاولة أو التواصل مع الدعم الفني.',
+          `
+            <a href="checkout.html?id=${course.id}" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-sm transition">إعادة رفع الإيصال</a>
+            <a href="https://wa.me/201226099159" target="_blank" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold text-sm transition">تواصل واتساب</a>
+          `
+        );
+        return;
+      }
+
+      if (enrollment.status === 'approved') {
+        await loadLessons(courseId);
+      }
+    }
+
+    function showStatus(title, desc, actionsHtml) {
+      document.getElementById('status-screen').classList.remove('hidden');
+      document.getElementById('player-screen').classList.add('hidden');
+      document.getElementById('status-title').textContent = title;
+      document.getElementById('status-desc').textContent = desc;
+      document.getElementById('status-actions').innerHTML = actionsHtml;
+    }
+
+    // تحويل رابط يوتيوب تلقائياً لصيغة Embed لضمان التشغيل
+    function formatYouTubeUrl(url) {
+      if (!url) return '';
+      if (url.includes('youtube.com/embed/')) return url;
+      let videoId = '';
+      if (url.includes('youtu.be/')) {
+        videoId = url.split('youtu.be/')[1].split('?')[0];
+      } else if (url.includes('youtube.com/watch?v=')) {
+        videoId = url.split('v=')[1].split('&')[0];
+      }
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+    }
+
+    async function loadLessons(cId) {
+      document.getElementById('status-screen').classList.add('hidden');
+      document.getElementById('player-screen').classList.remove('hidden');
+
+      const { data: lessons, error } = await supabaseClient
+        .from('lessons')
+        .select('*')
+        .eq('course_id', cId)
+        .order('order_index', { ascending: true });
+
+      const listContainer = document.getElementById('lessons-list');
+
+      if (error || !lessons || lessons.length === 0) {
+        listContainer.innerHTML = `<p class="text-slate-400 text-sm">لم يتم إضافة دروس لهذا الكورس بعد.</p>`;
+        return;
+      }
+
+      allLessons = lessons;
+      renderLessonsList(0);
+      playLesson(0);
+    }
+
+    function renderLessonsList(activeIndex) {
+      const listContainer = document.getElementById('lessons-list');
+      listContainer.innerHTML = allLessons.map((lesson, idx) => {
+        const isActive = idx === activeIndex;
+        return `
+          <button onclick="playLesson(${idx})" 
+            class="w-full text-right p-3 rounded-xl border transition flex items-center justify-between gap-2 ${
+              isActive 
+                ? 'bg-indigo-600/20 border-indigo-500 text-white font-bold' 
+                : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+            }">
+            <span class="text-sm truncate">${idx + 1}. ${lesson.title}</span>
+            <span class="text-xs ${isActive ? 'text-indigo-400' : 'text-slate-500'}">▶</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function playLesson(index) {
+      const lesson = allLessons[index];
+      if (!lesson) return;
+      document.getElementById('video-frame').src = formatYouTubeUrl(lesson.video_url);
+      document.getElementById('active-lesson-title').textContent = lesson.title;
+      renderLessonsList(index);
+    }
+
+    initCourseView();
+  </script>
+</body>
+</html>

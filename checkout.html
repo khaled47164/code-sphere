@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>إتمام الاشتراك والدفع - Code Sphere</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-4 font-sans">
+
+  <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-2xl p-8 shadow-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <a href="index.html" class="text-sm text-indigo-400 hover:underline">← العودة للكورسات</a>
+      <span class="text-xs font-bold tracking-wider uppercase text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">Code Sphere</span>
+    </div>
+    
+    <h1 class="text-2xl font-bold mt-2 mb-1" id="course-title">جاري تحميل بيانات الكورس...</h1>
+    <p class="text-emerald-400 font-bold text-xl mb-6" id="course-price"></p>
+
+    <!-- بيانات التحويل -->
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 mb-6 space-y-2 text-sm">
+      <p class="font-bold text-amber-400">خطوات الاشتراك في Code Sphere | عالم البرمجة:</p>
+      <p>1. حوّل قيمة الكورس على محفظة الكاش (فودافون / أورانج / اتصالات كاش):</p>
+      <div class="flex items-center justify-between bg-slate-800 p-3 rounded-lg border border-slate-700 my-2">
+        <span class="text-white font-mono text-base font-bold tracking-wider" dir="ltr">01226099159</span>
+        <button type="button" id="copy-btn" onclick="copyCashNumber()" 
+          class="text-xs bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg font-bold transition">
+          نسخ الرقم
+        </button>
+      </div>
+      <p>2. اكتب الرقم اللي حولت منه وارفع سكرين شوت الإيصال بالأسفل.</p>
+    </div>
+
+    <!-- فورم رفع الإيصال والرقم -->
+    <form onsubmit="submitReceipt(event)" class="space-y-4">
+      <div>
+        <label class="block text-sm text-slate-300 mb-2">الرقم الذي تم التحويل منه <span class="text-rose-400">*</span></label>
+        <input type="tel" id="sender-phone" required pattern="^01[0125][0-9]{8}$" 
+          title="أدخل رقم هاتف مصري صحيح مكون من 11 رقم يبدأ بـ 010 أو 011 أو 012 أو 015" 
+          placeholder="مثال: 01012345678"
+          class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 font-mono text-left" dir="ltr" />
+      </div>
+
+      <div>
+        <label class="block text-sm text-slate-300 mb-2">صورة إيصال التحويل (Screenshot) <span class="text-rose-400">*</span></label>
+        <input type="file" id="receipt-file" accept="image/*" required
+          class="w-full text-sm text-slate-300 file:ml-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 bg-slate-900 rounded-xl border border-slate-700 p-2" />
+      </div>
+
+      <button type="submit" id="submit-btn" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold transition shadow-lg">
+        تأكيد وإرسال الإيصال
+      </button>
+    </form>
+  </div>
+
+  <script src="supabase-config.js"></script>
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseId = urlParams.get('id');
+    let currentUser = null;
+
+    function copyCashNumber() {
+      navigator.clipboard.writeText('01226099159');
+      const copyBtn = document.getElementById('copy-btn');
+      copyBtn.textContent = 'تم النسخ ✓';
+      copyBtn.classList.replace('bg-indigo-600', 'bg-emerald-600');
+      setTimeout(() => {
+        copyBtn.textContent = 'نسخ الرقم';
+        copyBtn.classList.replace('bg-emerald-600', 'bg-indigo-600');
+      }, 2000);
+    }
+
+    async function initCheckout() {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (!user) return window.location.href = 'auth.html';
+      currentUser = user;
+
+      if (!courseId) return window.location.href = 'index.html';
+
+      const { data: course } = await supabaseClient.from('courses').select('*').eq('id', courseId).single();
+      if (course) {
+        document.getElementById('course-title').textContent = `الاشتراك في: ${course.title}`;
+        document.getElementById('course-price').textContent = `المبلغ المطلوب: ${course.price} ج.م`;
+      }
+    }
+
+    async function submitReceipt(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      const fileInput = document.getElementById('receipt-file');
+      const senderPhone = document.getElementById('sender-phone').value.trim();
+      const file = fileInput.files[0];
+
+      if (!file || !senderPhone) return;
+
+      btn.disabled = true;
+      btn.textContent = 'جاري رفع الإيصال...';
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}_${courseId}_${Date.now()}.${fileExt}`;
+
+      // 1. رفع صورة الإيصال إلى Supabase Storage
+      const { error: uploadError } = await supabaseClient.storage
+        .from('receipts')
+        .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        console.error("Storage Error:", uploadError);
+        alert('فشل رفع الصورة: ' + uploadError.message);
+        btn.disabled = false;
+        btn.textContent = 'تأكيد وإرسال الإيصال';
+        return;
+      }
+
+      // 2. جلب الرابط العام للصورة
+      const { data: publicUrlData } = supabaseClient.storage.from('receipts').getPublicUrl(fileName);
+
+      // 3. تسجيل طلب الاشتراك في الداتابيز مع رقم المحول منه
+      const { error: dbError } = await supabaseClient.from('enrollments').insert({
+        user_id: currentUser.id,
+        course_id: courseId,
+        receipt_url: publicUrlData.publicUrl,
+        sender_phone: senderPhone,
+        status: 'pending'
+      });
+
+      if (dbError) {
+        console.error("DB Error:", dbError);
+        alert('حدث خطأ أثناء تسجيل الطلب: ' + dbError.message);
+        btn.disabled = false;
+        btn.textContent = 'تأكيد وإرسال الإيصال';
+      } else {
+        alert('تم إرسال إيصالك بنجاح! سيتم تفعيل الكورس فور مراجعته من إدارة Code Sphere.');
+        window.location.href = 'index.html';
+      }
+    }
+
+    initCheckout();
+  </script>
+</body>
+</html>
